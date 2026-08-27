@@ -6,6 +6,7 @@ export component MainWindow inherits Window {
     in-out property <bool> rename-vars: true;
     in-out property <bool> rename-lists: true;
     in-out property <bool> rename-sprites: false;
+    in-out property <bool> rename-broadcasts: false;   // 新增
     in-out property <string> log-text: "";
     in-out property <bool> running: false;
 
@@ -30,8 +31,8 @@ export component MainWindow inherits Window {
             spacing: 20px;
             CheckBox { text: "混淆变量"; checked: rename-vars; toggled => { rename-vars = self.checked; } }
             CheckBox { text: "混淆列表"; checked: rename-lists; toggled => { rename-lists = self.checked; } }
-            // 混淆角色复选框默认隐藏，且值始终为 false
             CheckBox { text: "混淆角色"; checked: rename-sprites; visible: false; toggled => { rename-sprites = self.checked; } }
+            CheckBox { text: "混淆广播"; checked: rename-broadcasts; toggled => { rename-broadcasts = self.checked; } }  // 新增
         }
         Button {
             text: "开始混淆";

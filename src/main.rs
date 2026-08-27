@@ -1,4 +1,4 @@
-#![windows_subsystem = "windows"]
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
@@ -98,6 +98,7 @@ fn obfuscate(
     rename_vars: bool,
     rename_lists: bool,
     rename_sprites: bool,
+    rename_broadcasts: bool,
     mut log_callback: impl FnMut(&str),
 ) -> Result<String> {
     log_callback("开始加载项目...");
@@ -111,9 +112,10 @@ fn obfuscate(
     let mut var_mapping = HashMap::new();
     let mut list_mapping = HashMap::new();
     let mut sprite_mapping = HashMap::new();
+    let mut broadcast_mapping = HashMap::new();
     let mut all_used_names = HashSet::new();
 
-    log_callback("收集并重命名变量、列表、角色...");
+    log_callback("收集并重命名变量、列表、角色、广播...");
 
     for target in targets.iter_mut() {
         // 变量
@@ -211,6 +213,29 @@ fn obfuscate(
                 }
             }
         }
+
+        // 广播消息
+        if rename_broadcasts {
+            if let Some(broadcasts) = target.get_mut("broadcasts") {
+                if let Value::Object(map) = broadcasts {
+                    let mut to_rename = Vec::new();
+                    for (key, val) in map.iter_mut() {
+                        if let Some(old_name) = val.as_str() {
+                            to_rename.push((key.clone(), old_name.to_string(), val));
+                        }
+                    }
+                    for (_, old_name, val) in to_rename {
+                        let mut new_name = random_name(8);
+                        while all_used_names.contains(&new_name) {
+                            new_name = random_name(8);
+                        }
+                        all_used_names.insert(new_name.clone());
+                        broadcast_mapping.insert(old_name, new_name.clone());
+                        *val = Value::String(new_name);
+                    }
+                }
+            }
+        }
     }
 
     log_callback("替换积木中的引用...");
@@ -222,6 +247,7 @@ fn obfuscate(
         if let Some(blocks) = target.get_mut("blocks").and_then(|v| v.as_object_mut()) {
             for block in blocks.values_mut() {
                 if let Some(fields) = block.get_mut("fields").and_then(|v| v.as_object_mut()) {
+                    // 替换变量
                     if rename_vars {
                         if let Some(var_field) = fields.get_mut("VARIABLE") {
                             if let Some(arr) = var_field.as_array_mut() {
@@ -235,6 +261,8 @@ fn obfuscate(
                             }
                         }
                     }
+
+                    // 替换列表
                     if rename_lists {
                         if let Some(list_field) = fields.get_mut("LIST") {
                             if let Some(arr) = list_field.as_array_mut() {
@@ -248,6 +276,8 @@ fn obfuscate(
                             }
                         }
                     }
+
+                    // 替换角色名（白名单）
                     if rename_sprites {
                         for field_name in SPRITE_FIELDS.iter() {
                             if EXCLUDED_FIELDS.contains(field_name) {
@@ -266,6 +296,32 @@ fn obfuscate(
                             }
                         }
                     }
+
+                    // 替换广播消息
+                    if rename_broadcasts {
+                        if let Some(broadcast_field) = fields.get_mut("BROADCAST_OPTION") {
+                            if let Some(arr) = broadcast_field.as_array_mut() {
+                                if let Some(first) = arr.get_mut(0) {
+                                    if let Some(old) = first.as_str() {
+                                        if let Some(new) = broadcast_mapping.get(old) {
+                                            *first = Value::String(new.clone());
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if let Some(message_field) = fields.get_mut("MESSAGE") {
+                            if let Some(arr) = message_field.as_array_mut() {
+                                if let Some(first) = arr.get_mut(0) {
+                                    if let Some(old) = first.as_str() {
+                                        if let Some(new) = broadcast_mapping.get(old) {
+                                            *first = Value::String(new.clone());
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -275,10 +331,11 @@ fn obfuscate(
     save_project(&data, sb3_in, sb3_out)?;
 
     let stats = format!(
-        "混淆完成！\n  变量重命名: {} 个\n  列表重命名: {} 个\n  角色重命名: {} 个\n输出文件: {}",
+        "混淆完成！\n  变量重命名: {} 个\n  列表重命名: {} 个\n  角色重命名: {} 个\n  广播重命名: {} 个\n输出文件: {}",
         var_mapping.len(),
         list_mapping.len(),
         sprite_mapping.len(),
+        broadcast_mapping.len(),
         sb3_out.display()
     );
     log_callback(&stats);
@@ -341,11 +398,12 @@ fn main() -> Result<()> {
             let rename_vars = window.get_rename_vars();
             let rename_lists = window.get_rename_lists();
             let rename_sprites = window.get_rename_sprites();
+            let rename_broadcasts = window.get_rename_broadcasts();
 
             if input.is_empty() || output.is_empty() {
                 let msg = "错误：请选择输入和输出文件".to_string();
                 let window2 = window_weak.clone();
-                slint::invoke_from_event_loop(move || {
+                let _ = slint::invoke_from_event_loop(move || {
                     let w = window2.unwrap();
                     let log = w.get_log_text().to_string();
                     w.set_log_text(SharedString::from(format!("{}{}\n", log, msg)));
@@ -357,7 +415,7 @@ fn main() -> Result<()> {
             if !input_path.exists() {
                 let msg = "错误：输入文件不存在".to_string();
                 let window2 = window_weak.clone();
-                slint::invoke_from_event_loop(move || {
+                let _ = slint::invoke_from_event_loop(move || {
                     let w = window2.unwrap();
                     let log = w.get_log_text().to_string();
                     w.set_log_text(SharedString::from(format!("{}{}\n", log, msg)));
@@ -367,7 +425,7 @@ fn main() -> Result<()> {
             if input == output {
                 let msg = "错误：输入和输出文件不能相同".to_string();
                 let window2 = window_weak.clone();
-                slint::invoke_from_event_loop(move || {
+                let _ = slint::invoke_from_event_loop(move || {
                     let w = window2.unwrap();
                     let log = w.get_log_text().to_string();
                     w.set_log_text(SharedString::from(format!("{}{}\n", log, msg)));
@@ -376,7 +434,7 @@ fn main() -> Result<()> {
             }
 
             // 设置运行状态
-            slint::invoke_from_event_loop({
+            let _ = slint::invoke_from_event_loop({
                 let window = window_weak.clone();
                 move || {
                     let w = window.unwrap();
@@ -393,7 +451,7 @@ fn main() -> Result<()> {
                 let log_callback = move |msg: &str| {
                     let msg = msg.to_string();
                     let window = window_for_log.clone();
-                    slint::invoke_from_event_loop(move || {
+                    let _ = slint::invoke_from_event_loop(move || {
                         let w = window.unwrap();
                         let log = w.get_log_text().to_string();
                         let new_log = format!("{}{}\n", log, msg);
@@ -407,12 +465,13 @@ fn main() -> Result<()> {
                     rename_vars,
                     rename_lists,
                     rename_sprites,
+                    rename_broadcasts,
                     log_callback,
                 );
 
                 // 克隆另一份用于最终状态更新
                 let window_for_final = window_weak_for_thread.clone();
-                slint::invoke_from_event_loop(move || {
+                let _ = slint::invoke_from_event_loop(move || {
                     let w = window_for_final.unwrap();
                     w.set_running(false);
                     if let Err(e) = result {
