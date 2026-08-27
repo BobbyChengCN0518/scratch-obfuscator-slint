@@ -1,0 +1,17 @@
+[package]
+name = "scratch-obfuscator-slint"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+slint = "1.17.1"
+rfd = "0.17.2"
+serde_json = "1.0.151"
+zip = "8.6.0"
+rand = "0.8"
+tempfile = "3.27.0"
+anyhow = "1.0"
+walkdir = "2"
+
+[build-dependencies]
+slint-build = "1.17.1"

@@ -1,0 +1,50 @@
+import { LineEdit, Button, CheckBox, VerticalBox, HorizontalBox, ScrollView } from "std-widgets.slint";
+
+export component MainWindow inherits Window {
+    in-out property <string> input-path: "";
+    in-out property <string> output-path: "";
+    in-out property <bool> rename-vars: true;
+    in-out property <bool> rename-lists: true;
+    in-out property <bool> rename-sprites: false;
+    in-out property <string> log-text: "";
+    in-out property <bool> running: false;
+
+    callback browse-input();
+    callback browse-output();
+    callback run-obfuscation();
+
+    VerticalBox {
+        spacing: 8px;
+        padding: 8px;
+        HorizontalBox {
+            Text { text: "输入文件 (.sb3):"; }
+            LineEdit { text: input-path; }
+            Button { text: "浏览..."; clicked => { browse-input(); } }
+        }
+        HorizontalBox {
+            Text { text: "输出文件 (.sb3):"; }
+            LineEdit { text: output-path; }
+            Button { text: "浏览..."; clicked => { browse-output(); } }
+        }
+        HorizontalBox {
+            spacing: 20px;
+            CheckBox { text: "混淆变量"; checked: rename-vars; toggled => { rename-vars = self.checked; } }
+            CheckBox { text: "混淆列表"; checked: rename-lists; toggled => { rename-lists = self.checked; } }
+            // 混淆角色复选框默认隐藏，且值始终为 false
+            CheckBox { text: "混淆角色"; checked: rename-sprites; visible: false; toggled => { rename-sprites = self.checked; } }
+        }
+        Button {
+            text: "开始混淆";
+            enabled: !running;
+            clicked => { run-obfuscation(); }
+        }
+        Text { text: "运行日志:"; }
+        ScrollView {
+            height: 200px;
+            Text {
+                text: log-text;
+                wrap: word-wrap;
+            }
+        }
+    }
+}
